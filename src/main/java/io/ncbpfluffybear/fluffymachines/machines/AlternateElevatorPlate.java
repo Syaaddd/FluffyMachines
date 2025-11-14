@@ -46,8 +46,8 @@ public class AlternateElevatorPlate extends SimpleSlimefunItem<BlockUseHandler> 
     private static final int MAX_CHEST_INDEX = 53;
 
     public AlternateElevatorPlate(ItemGroup category, SlimefunItemStack item, RecipeType recipeType,
-                                  ItemStack[] recipe, ItemStack recipeOutput) {
-        super(category, item, recipeType, recipe, recipeOutput);
+                                  ItemStack[] recipe) {
+        super(category, item, recipeType, recipe);
 
         addItemHandler(onPlace());
     }
