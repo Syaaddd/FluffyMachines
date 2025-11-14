@@ -469,12 +469,12 @@ public class FluffyItems {
     );
 
     static {
-        FireproofRune.setFireproof(FIREPROOF_RUNE);
-        addGlow(SMALL_PORTABLE_CHARGER);
-        addGlow(MEDIUM_PORTABLE_CHARGER);
-        addGlow(BIG_PORTABLE_CHARGER);
-        addGlow(LARGE_PORTABLE_CHARGER);
-        addGlow(CARBONADO_PORTABLE_CHARGER);
+        FireproofRune.setFireproof(FIREPROOF_RUNE.item());
+        addGlow(SMALL_PORTABLE_CHARGER.item());
+        addGlow(MEDIUM_PORTABLE_CHARGER.item());
+        addGlow(BIG_PORTABLE_CHARGER.item());
+        addGlow(LARGE_PORTABLE_CHARGER.item());
+        addGlow(CARBONADO_PORTABLE_CHARGER.item());
     }
 
     private static void addGlow(ItemStack item) {
