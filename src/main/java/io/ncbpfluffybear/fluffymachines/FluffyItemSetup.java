@@ -121,6 +121,7 @@ public final class FluffyItemSetup {
                 SlimefunItems.STEEL_PLATE.item(), SlimefunItems.STEEL_PLATE.item(), SlimefunItems.STEEL_PLATE.item()
         }).register(plugin);
 
+        // Tetap gunakan ItemStack untuk kompatibilitas dengan recipe array
         ItemStack previousBarrel = new ItemStack(Material.BARREL);
 
         for (Barrel.BarrelType barrelType : Barrel.BarrelType.values()) {
@@ -140,7 +141,8 @@ public final class FluffyItemSetup {
                     barrelType.getBorder(), barrelType.getReinforcement(), barrelType.getBorder()
             }, barrelType.getDefaultSize()).register(plugin);
 
-            previousBarrel = barrelStack;
+            // PERBAIKAN: Konversi SlimefunItemStack ke ItemStack menggunakan .item()
+            previousBarrel = barrelStack.item();
 
         }
     }
