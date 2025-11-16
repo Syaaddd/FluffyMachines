@@ -56,8 +56,9 @@ public class KeyedCrafterListener implements Listener {
                     return;
                 }
 
-                if (SmartFactory.getAcceptedItems().contains((SlimefunItemStack) key.getItem())) {
-
+                // PERBAIKAN: Bandingkan berdasarkan ID atau gunakan method yang lebih aman
+                // Opsi 1: Bandingkan berdasarkan ID (Rekomendasi)
+                if (isItemAccepted(key, SmartFactory.getAcceptedItems())) {
                     BlockStorage.addBlockInfo(b, "recipe", key.getId());
                     BlockStorage.getInventory(b).replaceExistingItem(SmartFactory.RECIPE_SLOT,
                             SmartFactory.getDisplayItem(key, ((RecipeDisplayItem) sfBlock).getDisplayRecipes())
@@ -90,8 +91,37 @@ public class KeyedCrafterListener implements Listener {
         }
     }
 
+    /**
+     * Check if a SlimefunItem is in the accepted items list
+     *
+     * @param item The SlimefunItem to check
+     * @param acceptedItems The list of accepted SlimefunItemStacks
+     * @return true if the item is accepted
+     */
+    private boolean isItemAccepted(SlimefunItem item, java.util.List<SlimefunItemStack> acceptedItems) {
+        if (item == null || acceptedItems == null) {
+            return false;
+        }
+
+        String itemId = item.getId();
+
+        for (SlimefunItemStack acceptedItem : acceptedItems) {
+            if (acceptedItem.getItemId().equals(itemId)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private boolean isCargoNode(@Nullable SlimefunItem recipe) {
-        return recipe != null && (recipe.getItem() == SlimefunItems.CARGO_INPUT_NODE
-                || recipe.getItem() == SlimefunItems.CARGO_OUTPUT_NODE || recipe.getItem() == SlimefunItems.CARGO_OUTPUT_NODE_2);
+        if (recipe == null) {
+            return false;
+        }
+
+        String recipeId = recipe.getId();
+        return recipeId.equals("CARGO_NODE_INPUT")
+                || recipeId.equals("CARGO_NODE")
+                || recipeId.equals("CARGO_NODE_OUTPUT");
     }
 }
