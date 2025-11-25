@@ -35,13 +35,13 @@ public class WaterSprinkler extends AbstractGrowthAccelerator {
     public static final int CAPACITY = 128;
     private static final int RADIUS = 2;
     private static final int PROGRESS_SLOT = 4;
-    private static final CustomItemStack noWaterItem = new CustomItemStack(Material.BUCKET,
-        "&cNo water found",
-        "",
-        "&cPlease place water under the sprinkler!"
+    private static final ItemStack noWaterItem = CustomItemStack.create(Material.BUCKET,
+            "&cNo water found",
+            "",
+            "&cPlease place water under the sprinkler!"
     );
-    private static final CustomItemStack waterFoundItem = new CustomItemStack(Material.WATER_BUCKET,
-        "&bWater detected"
+    private static final ItemStack waterFoundItem = CustomItemStack.create(Material.WATER_BUCKET,
+            "&bWater detected"
     );
     private final ItemSetting<Boolean> particles = new ItemSetting<>(this, "particles", true);
 
@@ -49,12 +49,12 @@ public class WaterSprinkler extends AbstractGrowthAccelerator {
         super(category, item, recipeType, recipe);
 
         createPreset(this, "&bWater Sprinkler",
-            blockMenuPreset -> {
-                for (int i = 0; i < 9; i++)
-                    blockMenuPreset.addItem(i, ChestMenuUtils.getBackground(), ChestMenuUtils.getEmptyClickHandler());
+                blockMenuPreset -> {
+                    for (int i = 0; i < 9; i++)
+                        blockMenuPreset.addItem(i, ChestMenuUtils.getBackground(), ChestMenuUtils.getEmptyClickHandler());
 
-                blockMenuPreset.addItem(PROGRESS_SLOT, noWaterItem);
-            });
+                    blockMenuPreset.addItem(PROGRESS_SLOT, noWaterItem);
+                });
 
         addItemSetting(successChance, particles);
     }
@@ -108,8 +108,8 @@ public class WaterSprinkler extends AbstractGrowthAccelerator {
                     final Block block = b.getRelative(x, 0, z);
 
                     if (particles.getValue()) {
-                        block.getWorld().spawnParticle(Particle.WATER_SPLASH, block.getLocation().add(0.5D, 0.5D,
-                            0.5D), 4, 0.1F, 0.1F, 0.1F);
+                        block.getWorld().spawnParticle(Particle.SPLASH, block.getLocation().add(0.5D, 0.5D,
+                                0.5D), 4, 0.1F, 0.1F, 0.1F);
                     }
 
                     BlockData blockData = block.getBlockData();
@@ -144,8 +144,8 @@ public class WaterSprinkler extends AbstractGrowthAccelerator {
                     ageable.setAge(ageable.getAge() + 1);
                     crop.setBlockData(ageable);
 
-                    crop.getWorld().spawnParticle(Particle.VILLAGER_HAPPY, crop.getLocation().add(0.5D, 0.5D, 0.5D),
-                        4, 0.1F, 0.1F, 0.1F);
+                    crop.getWorld().spawnParticle(Particle.HAPPY_VILLAGER, crop.getLocation().add(0.5D, 0.5D, 0.5D),
+                            4, 0.1F, 0.1F, 0.1F);
                 }
             }
         }

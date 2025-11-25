@@ -248,13 +248,14 @@ public class FluffyItems {
     );
     public static final SlimefunItemStack FIREPROOF_RUNE = new SlimefunItemStack(
             "FIREPROOF_RUNE",
-            new ColoredFireworkStar(Color.fromRGB(255, 165, 0),
-                    "&7Ancient Rune &8&l[&c&lFireproof&8&l]",
-                    "",
-                    "&eDrop this rune onto a dropped item to",
-                    "&emake it &cfireproof",
-                    ""
-            ));
+            Material.FIREWORK_STAR,
+            Color.fromRGB(255, 165, 0),
+            "&7Ancient Rune &8&l[&c&lFireproof&8&l]",
+            "",
+            "&eDrop this rune onto a dropped item to",
+            "&emake it &cfireproof",
+            ""
+    );
     public static final SlimefunItemStack SUPERHEATED_FURNACE = new SlimefunItemStack("SUPERHEATED_FURNACE",
             Material.BLAST_FURNACE,
             "&cSuper Heated Furnace",
