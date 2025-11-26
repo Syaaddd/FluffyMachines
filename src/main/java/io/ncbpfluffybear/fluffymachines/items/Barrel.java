@@ -36,6 +36,7 @@ import me.mrCookieSlime.Slimefun.api.item_transport.ItemTransportFlow;
 import org.apache.commons.lang.WordUtils;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Item;
@@ -43,10 +44,12 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.util.Vector;
 
 /**
  * A Remake of Barrels by John000708
+ * FIXED: Dupe bug prevention with strict Slimefun vs Vanilla item validation
  *
  * @author NCBPFluffyBear
  */
@@ -342,11 +345,21 @@ public class Barrel extends NonHopperableBlock implements DoubleHologramOwner {
 
         int stored = getStored(b);
         ItemStack item = inv.getItemInSlot(slot);
+        ItemStack displayItem = inv.getItemInSlot(DISPLAY_SLOT);
 
         if (stored == 0) {
             registerItem(b, inv, slot, item, capacity, stored);
-        } else if (stored > 0 && inv.getItemInSlot(DISPLAY_SLOT) != null
-                && matchMeta(Utils.unKeyItem(inv.getItemInSlot(DISPLAY_SLOT)), item)) {
+        } else if (stored > 0 && displayItem != null) {
+
+            // CRITICAL FIX: Validasi ketat sebelum menerima item
+            if (!matchMeta(displayItem, item)) {
+                // Item tidak cocok, tolak
+                String useTrash = BlockStorage.getLocationInfo(b.getLocation(), "trash");
+                if (useTrash != null && useTrash.equals("true")) {
+                    inv.replaceExistingItem(slot, null);
+                }
+                return;
+            }
 
             if (stored < capacity) {
 
@@ -477,7 +490,14 @@ public class Barrel extends NonHopperableBlock implements DoubleHologramOwner {
     private void registerItem(Block b, BlockMenu inv, int slot, ItemStack item, int capacity, int stored) {
         int amount = item.getAmount();
 
-        inv.replaceExistingItem(DISPLAY_SLOT, CustomItemStack.create(Utils.keyItem(item), 1));
+        // SECURITY FIX: Clone item untuk mencegah reference manipulation
+        ItemStack clonedItem = item.clone();
+        clonedItem.setAmount(1);
+
+        // Set the display slot immediately with the first item to lock the barrel type
+        // This "settings" ensures that only items matching this exact type (material + keyed status)
+        // can be added to this barrel going forward
+        inv.replaceExistingItem(DISPLAY_SLOT, clonedItem);
 
         // Fit all
         if (amount <= capacity) {
@@ -501,6 +521,7 @@ public class Barrel extends NonHopperableBlock implements DoubleHologramOwner {
 
     /**
      * This method checks if two items have the same metadata
+     * FIXED: Mencegah dupe bug dengan validasi Slimefun item yang lebih ketat
      *
      * @param item1 is the first item to compare
      * @param item2 is the second item to compare
@@ -513,9 +534,57 @@ public class Barrel extends NonHopperableBlock implements DoubleHologramOwner {
         }
 
         if (!item1.hasItemMeta() || !item2.hasItemMeta()) {
-            return true; // Match by type
+            return item1.hasItemMeta() == item2.hasItemMeta(); // Harus sama-sama tidak punya meta
         }
 
+        // CRITICAL FIX: Cek apakah salah satu adalah Slimefun item
+        SlimefunItem sfItem1 = SlimefunItem.getByItem(item1);
+        SlimefunItem sfItem2 = SlimefunItem.getByItem(item2);
+
+        // Jika salah satu adalah SF item dan yang lain bukan, mereka berbeda
+        if ((sfItem1 != null) != (sfItem2 != null)) {
+            return false;
+        }
+
+        // Jika keduanya SF items, harus SF item yang sama persis
+        if (sfItem1 != null && sfItem2 != null) {
+            if (!sfItem1.getId().equals(sfItem2.getId())) {
+                return false;
+            }
+        }
+
+        // Check if items have different NBT tags (like the fluffykey used to distinguish VNL vs SF items)
+        if (item1.hasItemMeta() && item2.hasItemMeta()) {
+            // Compare the persistent data container to distinguish between different item variants
+            var item1Container = item1.getItemMeta().getPersistentDataContainer();
+            var item2Container = item2.getItemMeta().getPersistentDataContainer();
+
+            // Check if one has the fluffykey and the other doesn't
+            boolean item1HasKey = item1Container.has(Utils.getFluffyKey(), PersistentDataType.INTEGER);
+            boolean item2HasKey = item2Container.has(Utils.getFluffyKey(), PersistentDataType.INTEGER);
+
+            // If one has the key and the other doesn't, they're different items
+            if (item1HasKey != item2HasKey) {
+                return false;
+            }
+
+            // If both have the key, check if they have the same value
+            if (item1HasKey && item2HasKey) {
+                int item1KeyValue = item1Container.get(Utils.getFluffyKey(), PersistentDataType.INTEGER);
+                int item2KeyValue = item2Container.get(Utils.getFluffyKey(), PersistentDataType.INTEGER);
+                if (item1KeyValue != item2KeyValue) {
+                    return false;
+                }
+            }
+
+            // ADDITIONAL FIX: Cek semua NamespacedKey yang ada di persistent data
+            if (!item1Container.getKeys().equals(item2Container.getKeys())) {
+                return false;
+            }
+        }
+
+        // For items with the same material but different "keyed" status, they should not match
+        // This prevents VNL items from matching with SF items of the same type
         return item1.getItemMeta().equals(item2.getItemMeta());
     }
 
@@ -596,7 +665,7 @@ public class Barrel extends NonHopperableBlock implements DoubleHologramOwner {
     }
 
     public void insertAll(Player p, BlockMenu menu, Block b) {
-        ItemStack storedItem = Utils.unKeyItem(menu.getItemInSlot(DISPLAY_SLOT));
+        ItemStack keyedStoredItem = menu.getItemInSlot(DISPLAY_SLOT);
         PlayerInventory inv = p.getInventory();
         int capacity = getCapacity(b);
 
@@ -608,7 +677,7 @@ public class Barrel extends NonHopperableBlock implements DoubleHologramOwner {
                 continue;
             }
             int amount = item.getAmount();
-            if (matchMeta(item, storedItem) && stored + amount <= capacity) {
+            if (matchMeta(item, keyedStoredItem) && stored + amount <= capacity) {
                 inv.setItem(i, null);
                 stored += amount;
             }

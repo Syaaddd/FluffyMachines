@@ -33,6 +33,10 @@ public final class Utils {
     private static final NamespacedKey fluffykey = new NamespacedKey(FluffyMachines.getInstance(), "fluffykey");
     private static final NamespacedKey nonClickable = new NamespacedKey(FluffyMachines.getInstance(), "nonclickable");
 
+    public static NamespacedKey getFluffyKey() {
+        return fluffykey;
+    }
+
     private final static TreeMap<Integer, String> map = new TreeMap<>();
 
     static {
