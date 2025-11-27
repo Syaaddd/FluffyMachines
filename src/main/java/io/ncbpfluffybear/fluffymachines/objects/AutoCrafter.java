@@ -250,38 +250,59 @@ public class AutoCrafter extends SlimefunItem implements EnergyNetComponent {
     private void craftIfValid(Block block) {
         BlockMenu menu = BlockStorage.getInventory(block);
 
-        // Make sure at least 1 slot is free
+        // Make sure at least 1 slot is free in output
+        boolean hasSpace = false;
         for (int outSlot : getOutputSlots()) {
             ItemStack outItem = menu.getItemInSlot(outSlot);
             if (outItem == null || outItem.getAmount() < outItem.getMaxStackSize()) {
+                hasSpace = true;
                 break;
-            } else if (outSlot == getOutputSlots()[1]) {
-                return;
             }
         }
 
+        if (!hasSpace) {
+            return;
+        }
+
         // Find matching recipe
-        for (ItemStack[] input : RecipeType.getRecipeInputList(mblock)) {
-            if (isCraftable(menu, input)) {
+        ItemStack[][] recipes = RecipeType.getRecipeInputList(mblock).toArray(new ItemStack[0][]);
+        for (ItemStack[] input : recipes) {
+            if (input != null && isCraftable(menu, input)) {
                 ItemStack output = RecipeType.getRecipeOutputList(mblock, input).clone();
-                if (!menu.fits(output, getOutputSlots())) {
+                if (output != null && menu.fits(output, getOutputSlots())) {
+                    craft(output, menu);
+                    removeCharge(block.getLocation(), getEnergyConsumption());
                     return;
                 }
-                craft(output, menu);
-                removeCharge(block.getLocation(), getEnergyConsumption());
-                return;
             }
         }
-        // we're only executing the last possible shaped recipe
-        // we don't want to allow this to be pressed instead of the default timer-based
-        // execution to prevent abuse and auto clickers
     }
 
     private boolean isCraftable(BlockMenu inv, ItemStack[] recipe) {
         for (int j = 0; j < 9; j++) {
-            ItemStack item = inv.getItemInSlot(getInputSlots()[j]);
-            if ((item != null && item.getAmount() == 1 && item.getType().getMaxStackSize() != 1)
-                || !SlimefunUtils.isItemSimilar(inv.getItemInSlot(getInputSlots()[j]), recipe[j], true)) {
+            ItemStack inputItem = inv.getItemInSlot(getInputSlots()[j]);
+            ItemStack recipeItem = recipe[j];
+
+            // If recipe slot is null/air, input slot must also be null/air
+            if (recipeItem == null || recipeItem.getType() == Material.AIR) {
+                if (inputItem != null && inputItem.getType() != Material.AIR) {
+                    return false;
+                }
+                continue;
+            }
+
+            // If input slot is empty but recipe requires an item, return false
+            if (inputItem == null) {
+                return false;
+            }
+
+            // Check if there's at least 1 item to craft with
+            if (inputItem.getAmount() < 1) {
+                return false;
+            }
+
+            // Check if items are similar (true = ignore amount)
+            if (!SlimefunUtils.isItemSimilar(inputItem, recipeItem, true)) {
                 return false;
             }
         }
@@ -294,7 +315,7 @@ public class AutoCrafter extends SlimefunItem implements EnergyNetComponent {
             ItemStack item = inv.getItemInSlot(getInputSlots()[j]);
 
             if (item != null && item.getType() != Material.AIR) {
-                inv.consumeItem(getInputSlots()[j]);
+                inv.consumeItem(getInputSlots()[j], 1); // Consume 1 of each ingredient for the recipe
             }
         }
 

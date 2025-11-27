@@ -115,29 +115,52 @@ public final class FluffyItemSetup {
 
     public static void setupBarrels(@Nonnull FluffyMachines plugin) {
 
+        // Mini barrel still uses vanilla barrel in its recipe
         new MiniBarrel(fluffybarrels, FluffyItems.MINI_FLUFFY_BARREL, RecipeType.ENHANCED_CRAFTING_TABLE, new ItemStack[]{
                 new ItemStack(Material.OAK_SLAB), new ItemStack(Material.BARREL), new ItemStack(Material.OAK_SLAB),
                 new ItemStack(Material.OAK_SLAB), new ItemStack(Material.BARREL), new ItemStack(Material.OAK_SLAB),
                 SlimefunItems.STEEL_PLATE.item(), SlimefunItems.STEEL_PLATE.item(), SlimefunItems.STEEL_PLATE.item()
         }).register(plugin);
 
-        for (Barrel.BarrelType barrelType : Barrel.BarrelType.values()) {
+        // Create barrels with proper progression: each tier requires the tier below it
+        Barrel.BarrelType[] barrelTypes = Barrel.BarrelType.values();
 
-            SlimefunItemStack barrelStack = new SlimefunItemStack(barrelType.getKey(),
-                    barrelType.getType(),
-                    barrelType.getDisplayName(),
+        // Register barrels in progression order, using the previous tier barrel in recipes
+        // The key is to use the ID of the previous barrel type to reference the registered item
+        SlimefunItemStack previousBarrel = null;
+
+        for (int i = 0; i < barrelTypes.length; i++) {
+            Barrel.BarrelType currentType = barrelTypes[i];
+
+            SlimefunItemStack currentBarrel = new SlimefunItemStack(currentType.getKey(),
+                    currentType.getType(),
+                    currentType.getDisplayName(),
                     "",
                     "&7Stores a large amount of an item",
                     "",
-                    "&bCapacity: &e" + Barrel.getDisplayCapacity(barrelType) + " Items"
+                    "&bCapacity: &e" + Barrel.getDisplayCapacity(currentType) + " Items"
             );
 
-            // Use vanilla materials instead of previous barrels to prevent duplication exploits
-            new Barrel(fluffybarrels, barrelStack, RecipeType.ENHANCED_CRAFTING_TABLE, new ItemStack[]{
-                    barrelType.getBorder(), new ItemStack(Material.BARREL), barrelType.getBorder(),
-                    barrelType.getBorder(), new ItemStack(Material.BARREL), barrelType.getBorder(),
-                    barrelType.getBorder(), barrelType.getReinforcement(), barrelType.getBorder()
-            }, barrelType.getDefaultSize()).register(plugin);
+            // Determine the barrel ingredient based on progression
+            ItemStack barrelIngredient;
+            if (i == 0) {
+                // First barrel type (SMALL) uses vanilla barrel in recipe
+                barrelIngredient = new ItemStack(Material.BARREL);
+            } else {
+                // For subsequent barrels, use the previous tier barrel in recipe
+                // This requires using the ID of the previous barrel type
+                Barrel.BarrelType previousType = barrelTypes[i - 1];
+                // Reference the previous tier barrel using its ID
+                barrelIngredient = new SlimefunItemStack(previousType.getKey(), previousType.getType(), previousType.getDisplayName()).item();
+            }
+
+            new Barrel(fluffybarrels, currentBarrel, RecipeType.ENHANCED_CRAFTING_TABLE, new ItemStack[]{
+                    currentType.getBorder(), barrelIngredient, currentType.getBorder(),
+                    currentType.getBorder(), barrelIngredient, currentType.getBorder(),
+                    currentType.getBorder(), currentType.getReinforcement(), currentType.getBorder()
+            }, currentType.getDefaultSize()).register(plugin);
+
+            // Update previousBarrel for next iteration (though we can't easily reference the registered item directly)
         }
     }
 
