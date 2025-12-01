@@ -6,6 +6,7 @@ import io.ncbpfluffybear.fluffymachines.items.FireproofRune;
 import io.ncbpfluffybear.fluffymachines.items.HelicopterHat;
 import io.ncbpfluffybear.fluffymachines.items.tools.WateringCan;
 import io.ncbpfluffybear.fluffymachines.machines.AlternateElevatorPlate;
+import io.ncbpfluffybear.fluffymachines.FluffyMachines;
 import javax.annotation.Nonnull;
 import me.mrCookieSlime.Slimefun.api.BlockStorage;
 import org.bukkit.Location;
@@ -48,6 +49,48 @@ public class Events implements Listener {
             } else {
                 p.removePotionEffect(PotionEffectType.LEVITATION);
             }
+        } else {
+            // If player no longer has helicopter hat equipped, remove the effect
+            p.removePotionEffect(PotionEffectType.LEVITATION);
+        }
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onHelmetChange(InventoryClickEvent e) {
+        if (!(e.getWhoClicked() instanceof Player)) {
+            return;
+        }
+
+        Player p = (Player) e.getWhoClicked();
+
+        // Check if this is an armor slot and specifically the helmet slot
+        if (e.getSlot() == 39) { // 39 is the helmet slot in player inventory
+            // Delay the check to happen after the inventory update
+            org.bukkit.Bukkit.getScheduler().runTaskLater(io.ncbpfluffybear.fluffymachines.FluffyMachines.getInstance(), () -> {
+                if (!helicopterHat.isItem(p.getEquipment().getHelmet())) {
+                    // Player no longer has helicopter hat, remove the effect if present
+                    if (p.hasPotionEffect(PotionEffectType.LEVITATION)) {
+                        p.removePotionEffect(PotionEffectType.LEVITATION);
+                    }
+                }
+            }, 1L);
+        }
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onPlayerArmorStandManipulate(PlayerArmorStandManipulateEvent e) {
+        if (e.getRightClicked().getUniqueId().equals(e.getPlayer().getUniqueId())) {
+            // Player is manipulating their own armor stand (which includes armor slots)
+            // Delay the check to happen after the inventory update
+            org.bukkit.Bukkit.getScheduler().runTaskLater(io.ncbpfluffybear.fluffymachines.FluffyMachines.getInstance(), () -> {
+                Player p = e.getPlayer();
+                if (!helicopterHat.isItem(p.getEquipment().getHelmet())) {
+                    // Player no longer has helicopter hat, remove the effect if present
+                    if (p.hasPotionEffect(PotionEffectType.LEVITATION)) {
+                        p.removePotionEffect(PotionEffectType.LEVITATION);
+                    }
+                }
+            }, 1L);
         }
     }
 
