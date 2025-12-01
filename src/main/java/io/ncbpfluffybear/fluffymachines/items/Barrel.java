@@ -356,54 +356,80 @@ public class Barrel extends NonHopperableBlock implements DoubleHologramOwner {
     }
 
     void acceptInput(BlockMenu inv, Block b, int slot, int capacity) {
-        // If inventory is null, skip processing
         if (inv == null) {
             return;
         }
 
         ItemStack inputItem = inv.getItemInSlot(slot);
-        if (inputItem == null) {
+        if (inputItem == null || inputItem.getType() == Material.AIR) {
             return;
         }
 
         int stored = getStored(b);
         ItemStack displayItem = inv.getItemInSlot(DISPLAY_SLOT);
 
-        if (stored == 0) {
-            registerItem(b, inv, slot, inputItem, capacity, stored);
-        } else if (stored > 0 && displayItem != null) {
+        // Barrel is empty, register first item
+        if (stored == 0 || displayItem == null || displayItem.getType() == Material.BARRIER) {
+            registerItem(b, inv, slot, inputItem, capacity, 0);
+            return;
+        }
 
-            // CRITICAL FIX: Validasi ketat sebelum menerima item
-            if (!matchMeta(displayItem, inputItem)) {
-                // Item tidak cocok, tolak
+        // === CRITICAL VALIDATION: Item must match display ===
+        if (!matchMeta(displayItem, inputItem)) {
+            // Item doesn't match barrel type
+            String useTrash = BlockStorage.getLocationInfo(b.getLocation(), "trash");
+            if (useTrash != null && useTrash.equals("true")) {
+                // Trash mode: delete incompatible items
+                inv.replaceExistingItem(slot, null);
+            }
+            // If not trash mode, just leave it there (player can remove manually)
+            return;
+        }
+
+        // === ADDITIONAL CHECK: Verify Slimefun IDs match ===
+        SlimefunItem sfDisplay = SlimefunItem.getByItem(displayItem);
+        SlimefunItem sfInput = SlimefunItem.getByItem(inputItem);
+
+        // Both must be SF or both must be vanilla
+        if ((sfDisplay != null) != (sfInput != null)) {
+            String useTrash = BlockStorage.getLocationInfo(b.getLocation(), "trash");
+            if (useTrash != null && useTrash.equals("true")) {
+                inv.replaceExistingItem(slot, null);
+            }
+            return;
+        }
+
+        // If both are SF, IDs must match exactly
+        if (sfDisplay != null && sfInput != null) {
+            if (!sfDisplay.getId().equals(sfInput.getId())) {
                 String useTrash = BlockStorage.getLocationInfo(b.getLocation(), "trash");
                 if (useTrash != null && useTrash.equals("true")) {
                     inv.replaceExistingItem(slot, null);
                 }
                 return;
             }
+        }
 
-            if (stored < capacity) {
+        // Item matches, proceed with storage
+        if (stored < capacity) {
+            int amountToStore = inputItem.getAmount();
 
-                // Can fit entire itemstack
-                if (stored + inputItem.getAmount() <= capacity) {
-                    storeItem(b, inv, slot, inputItem, capacity, stored);
-
-                    // Split itemstack
-                } else {
-                    int amount = capacity - stored;
-                    inv.consumeItem(slot, amount);
-
-                    setStored(b, stored + amount);
-                    updateMenu(b, inv, false, capacity);
-                }
+            // Can fit entire stack
+            if (stored + amountToStore <= capacity) {
+                storeItem(b, inv, slot, inputItem, capacity, stored);
             } else {
-                String useTrash = BlockStorage.getLocationInfo(b.getLocation(), "trash");
-
-                if (useTrash != null && useTrash.equals("true")) {
-                    inv.replaceExistingItem(slot, null);
-                }
-
+                // Partial storage
+                int spaceLeft = capacity - stored;
+                inv.consumeItem(slot, spaceLeft);
+                setStored(b, capacity); // Barrel is now full
+                updateMenu(b, inv, false, capacity);
+            }
+        } else {
+            // Barrel is full
+            String useTrash = BlockStorage.getLocationInfo(b.getLocation(), "trash");
+            if (useTrash != null && useTrash.equals("true")) {
+                // Delete overflow items
+                inv.replaceExistingItem(slot, null);
             }
         }
     }
@@ -532,25 +558,33 @@ public class Barrel extends NonHopperableBlock implements DoubleHologramOwner {
     }
 
     private void registerItem(Block b, BlockMenu inv, int slot, ItemStack item, int capacity, int stored) {
+        if (item == null || inv == null) {
+            return;
+        }
+
         int amount = item.getAmount();
 
-        // SECURITY FIX: Clone item untuk mencegah reference manipulation
+        // SECURITY FIX: Deep clone dengan serialization untuk prevent reference manipulation
         ItemStack clonedItem = item.clone();
+
+        // Reset amount to 1 for display
         clonedItem.setAmount(1);
 
-        // Set the display slot immediately with the first item to lock the barrel type
-        // This "settings" ensures that only items matching this exact type (material + keyed status)
-        // can be added to this barrel going forward
+        // Additional validation: ensure the clone is valid
+        if (clonedItem.getType() == Material.AIR) {
+            return;
+        }
+
+        // Lock barrel type by setting display slot
         inv.replaceExistingItem(DISPLAY_SLOT, clonedItem);
 
-        // Fit all
+        // Process storage
         if (amount <= capacity) {
             storeItem(b, inv, slot, item, capacity, stored);
         } else {
-            amount = capacity;
-            inv.consumeItem(slot, amount);
-
-            setStored(b, stored + amount);
+            // Capacity exceeded, store only what fits
+            inv.consumeItem(slot, capacity);
+            setStored(b, capacity);
             updateMenu(b, inv, false, capacity);
         }
     }
@@ -565,209 +599,215 @@ public class Barrel extends NonHopperableBlock implements DoubleHologramOwner {
 
     /**
      * This method checks if two items have the same metadata
-     * FIXED: Mencegah dupe bug dengan validasi Slimefun item yang lebih ketat
-     * FIXED: Proper handling of PersistentDataContainer types to prevent IllegalArgumentException
+     * COMPREHENSIVE FIX: Multi-layer validation untuk mencegah dupe bug
      *
      * @param item1 is the first item to compare
      * @param item2 is the second item to compare
      * @return if the items have the same meta
      */
     private boolean matchMeta(ItemStack item1, ItemStack item2) {
+        // Null safety check
+        if (item1 == null || item2 == null) {
+            return false;
+        }
+
         // Type check first (lightest operation)
         if (!item1.getType().equals(item2.getType())) {
             return false;
         }
 
-        // Check durability for non-block items
-        if (item1.getDurability() != item2.getDurability()) {
-            return false;
+        // Check durability for items that have durability
+        if (item1.getType().getMaxDurability() > 0) {
+            if (item1.getDurability() != item2.getDurability()) {
+                return false;
+            }
         }
 
         // If one has meta and the other doesn't, they're different
-        if (!item1.hasItemMeta() || !item2.hasItemMeta()) {
-            return item1.hasItemMeta() == item2.hasItemMeta(); // Must both have or not have meta
+        boolean item1HasMeta = item1.hasItemMeta();
+        boolean item2HasMeta = item2.hasItemMeta();
+
+        if (item1HasMeta != item2HasMeta) {
+            return false; // One has meta, other doesn't
         }
 
-        // CRITICAL FIX: Check if one is a Slimefun item and the other isn't
+        // If neither has meta, they match (vanilla items)
+        if (!item1HasMeta && !item2HasMeta) {
+            return true;
+        }
+
+        // === CRITICAL FIX: Slimefun Item Validation ===
         SlimefunItem sfItem1 = SlimefunItem.getByItem(item1);
         SlimefunItem sfItem2 = SlimefunItem.getByItem(item2);
 
-        // If one is a SF item and the other isn't, they're different
-        if ((sfItem1 != null) != (sfItem2 != null)) {
-            return false;
+        // If one is SF and other is vanilla, they're DIFFERENT
+        boolean item1IsSF = sfItem1 != null;
+        boolean item2IsSF = sfItem2 != null;
+
+        if (item1IsSF != item2IsSF) {
+            return false; // One is SF, other is vanilla - REJECT
         }
 
-        // If both are SF items, must be the exact same SF item
-        if (sfItem1 != null && sfItem2 != null) {
-            if (!sfItem1.getId().equals(sfItem2.getId())) {
+        // If both are SF items, they MUST have the exact same ID
+        if (item1IsSF && item2IsSF) {
+            String id1 = sfItem1.getId();
+            String id2 = sfItem2.getId();
+
+            if (id1 == null || id2 == null) {
                 return false;
+            }
+
+            if (!id1.equals(id2)) {
+                return false; // Different SF items - REJECT
             }
         }
 
-        // Get metadata for both items
+        // Get metadata
         var item1Meta = item1.getItemMeta();
         var item2Meta = item2.getItemMeta();
 
-        // Compare the persistent data container to distinguish between different item variants
-        var item1Container = item1Meta.getPersistentDataContainer();
-        var item2Container = item2Meta.getPersistentDataContainer();
+        if (item1Meta == null || item2Meta == null) {
+            return item1Meta == item2Meta;
+        }
 
-        // Check if one has the fluffykey and the other doesn't
-        boolean item1HasKey = item1Container.has(Utils.getFluffyKey(), PersistentDataType.INTEGER);
-        boolean item2HasKey = item2Container.has(Utils.getFluffyKey(), PersistentDataType.INTEGER);
+        // === Display Name Check ===
+        boolean item1HasName = item1Meta.hasDisplayName();
+        boolean item2HasName = item2Meta.hasDisplayName();
 
-        // If one has the key and the other doesn't, they're different items
-        if (item1HasKey != item2HasKey) {
+        if (item1HasName != item2HasName) {
             return false;
         }
 
-        // If both have the key, check if they have the same value
-        if (item1HasKey && item2HasKey) {
-            Integer item1KeyValue = item1Container.get(Utils.getFluffyKey(), PersistentDataType.INTEGER);
-            Integer item2KeyValue = item2Container.get(Utils.getFluffyKey(), PersistentDataType.INTEGER);
-
-            if (item1KeyValue == null || item2KeyValue == null) {
-                if (item1KeyValue != item2KeyValue) {
-                    return false;
-                }
-            } else if (!item1KeyValue.equals(item2KeyValue)) {
+        if (item1HasName && item2HasName) {
+            String name1 = item1Meta.getDisplayName();
+            String name2 = item2Meta.getDisplayName();
+            if (!name1.equals(name2)) {
                 return false;
             }
         }
 
-        // Check all NamespacedKeys in persistent data containers match
-        var keys1 = item1Container.getKeys();
-        var keys2 = item2Container.getKeys();
+        // === Lore Check ===
+        boolean item1HasLore = item1Meta.hasLore();
+        boolean item2HasLore = item2Meta.hasLore();
 
-        if (!keys1.equals(keys2)) {
+        if (item1HasLore != item2HasLore) {
             return false;
         }
 
-        // FIXED: Properly check each key with appropriate data type handling
-        // We iterate through keys and try different data types safely
-        for (NamespacedKey key : keys1) {
-            // Try to compare as different types, wrapped in try-catch to handle type mismatches
-            boolean matched = false;
+        if (item1HasLore && item2HasLore) {
+            List<String> lore1 = item1Meta.getLore();
+            List<String> lore2 = item2Meta.getLore();
 
-            try {
-                // Try INTEGER
-                if (item1Container.has(key, PersistentDataType.INTEGER) &&
-                        item2Container.has(key, PersistentDataType.INTEGER)) {
-                    Integer val1 = item1Container.get(key, PersistentDataType.INTEGER);
-                    Integer val2 = item2Container.get(key, PersistentDataType.INTEGER);
-                    matched = (val1 == null && val2 == null) || (val1 != null && val1.equals(val2));
-                    if (!matched) return false;
-                    continue;
-                }
-            } catch (Exception ignored) {
-                // Type mismatch, try next type
-            }
-
-            try {
-                // Try STRING
-                if (item1Container.has(key, PersistentDataType.STRING) &&
-                        item2Container.has(key, PersistentDataType.STRING)) {
-                    String val1 = item1Container.get(key, PersistentDataType.STRING);
-                    String val2 = item2Container.get(key, PersistentDataType.STRING);
-                    matched = (val1 == null && val2 == null) || (val1 != null && val1.equals(val2));
-                    if (!matched) return false;
-                    continue;
-                }
-            } catch (Exception ignored) {
-                // Type mismatch, try next type
-            }
-
-            try {
-                // Try BYTE
-                if (item1Container.has(key, PersistentDataType.BYTE) &&
-                        item2Container.has(key, PersistentDataType.BYTE)) {
-                    Byte val1 = item1Container.get(key, PersistentDataType.BYTE);
-                    Byte val2 = item2Container.get(key, PersistentDataType.BYTE);
-                    matched = (val1 == null && val2 == null) || (val1 != null && val1.equals(val2));
-                    if (!matched) return false;
-                    continue;
-                }
-            } catch (Exception ignored) {
-                // Type mismatch, try next type
-            }
-
-            try {
-                // Try LONG
-                if (item1Container.has(key, PersistentDataType.LONG) &&
-                        item2Container.has(key, PersistentDataType.LONG)) {
-                    Long val1 = item1Container.get(key, PersistentDataType.LONG);
-                    Long val2 = item2Container.get(key, PersistentDataType.LONG);
-                    matched = (val1 == null && val2 == null) || (val1 != null && val1.equals(val2));
-                    if (!matched) return false;
-                    continue;
-                }
-            } catch (Exception ignored) {
-                // Type mismatch, try next type
-            }
-
-            try {
-                // Try DOUBLE
-                if (item1Container.has(key, PersistentDataType.DOUBLE) &&
-                        item2Container.has(key, PersistentDataType.DOUBLE)) {
-                    Double val1 = item1Container.get(key, PersistentDataType.DOUBLE);
-                    Double val2 = item2Container.get(key, PersistentDataType.DOUBLE);
-                    matched = (val1 == null && val2 == null) || (val1 != null && val1.equals(val2));
-                    if (!matched) return false;
-                    continue;
-                }
-            } catch (Exception ignored) {
-                // Type mismatch, continue
-            }
-
-            // If no type matched, check if both don't have the key (which shouldn't happen since we're iterating keys1)
-            if (!matched) {
-                // If we couldn't match any type, assume they're different
-                return false;
-            }
-        }
-
-        // Check enchantments
-        if (!item1Meta.getEnchants().equals(item2Meta.getEnchants())) {
-            return false;
-        }
-
-        // Check display names
-        if (item1Meta.hasDisplayName() != item2Meta.hasDisplayName()) {
-            return false;
-        }
-
-        if (item1Meta.hasDisplayName() && item2Meta.hasDisplayName()) {
-            if (!item1Meta.getDisplayName().equals(item2Meta.getDisplayName())) {
-                return false;
-            }
-        }
-
-        // Check lore
-        if (item1Meta.hasLore() != item2Meta.hasLore()) {
-            return false;
-        }
-
-        if (item1Meta.hasLore() && item2Meta.hasLore()) {
-            var lore1 = item1Meta.getLore();
-            var lore2 = item2Meta.getLore();
-
-            if (lore1 == null && lore2 == null) {
-                // Both are null, continue
-            } else if (lore1 == null || lore2 == null) {
-                return false;
+            if (lore1 == null || lore2 == null) {
+                if (lore1 != lore2) return false;
             } else if (!lore1.equals(lore2)) {
                 return false;
             }
         }
 
-        // Compare other meta properties
-        if (item1Meta.isUnbreakable() != item2Meta.isUnbreakable()) {
+        // === Enchantment Check ===
+        if (!item1Meta.getEnchants().equals(item2Meta.getEnchants())) {
             return false;
         }
 
-        // Final comprehensive check
-        // This prevents VNL items from matching with SF items of the same type
+        // === PersistentDataContainer Check ===
+        var pdc1 = item1Meta.getPersistentDataContainer();
+        var pdc2 = item2Meta.getPersistentDataContainer();
+
+        // Check FluffyKey specifically
+        boolean hasFluffyKey1 = pdc1.has(Utils.getFluffyKey(), PersistentDataType.INTEGER);
+        boolean hasFluffyKey2 = pdc2.has(Utils.getFluffyKey(), PersistentDataType.INTEGER);
+
+        if (hasFluffyKey1 != hasFluffyKey2) {
+            return false; // One has fluffy key, other doesn't
+        }
+
+        if (hasFluffyKey1 && hasFluffyKey2) {
+            Integer key1 = pdc1.get(Utils.getFluffyKey(), PersistentDataType.INTEGER);
+            Integer key2 = pdc2.get(Utils.getFluffyKey(), PersistentDataType.INTEGER);
+
+            if (key1 == null || key2 == null) {
+                if (key1 != key2) return false;
+            } else if (!key1.equals(key2)) {
+                return false;
+            }
+        }
+
+        // Check all PDC keys
+        var keys1 = pdc1.getKeys();
+        var keys2 = pdc2.getKeys();
+
+        if (keys1.size() != keys2.size()) {
+            return false;
+        }
+
+        if (!keys1.equals(keys2)) {
+            return false;
+        }
+
+        // Validate each key's value with proper type handling
+        for (NamespacedKey key : keys1) {
+            if (!comparePDCValue(pdc1, pdc2, key)) {
+                return false;
+            }
+        }
+
+        // === Final Meta Comparison ===
+        // This catches any other metadata differences
         return item1Meta.equals(item2Meta);
+    }
+
+    /**
+     * Helper method to compare PDC values safely
+     */
+    private boolean comparePDCValue(
+            org.bukkit.persistence.PersistentDataContainer pdc1,
+            org.bukkit.persistence.PersistentDataContainer pdc2,
+            NamespacedKey key
+    ) {
+        // Try different data types
+        try {
+            if (pdc1.has(key, PersistentDataType.STRING) && pdc2.has(key, PersistentDataType.STRING)) {
+                String val1 = pdc1.get(key, PersistentDataType.STRING);
+                String val2 = pdc2.get(key, PersistentDataType.STRING);
+                return (val1 == null && val2 == null) || (val1 != null && val1.equals(val2));
+            }
+        } catch (Exception ignored) {}
+
+        try {
+            if (pdc1.has(key, PersistentDataType.INTEGER) && pdc2.has(key, PersistentDataType.INTEGER)) {
+                Integer val1 = pdc1.get(key, PersistentDataType.INTEGER);
+                Integer val2 = pdc2.get(key, PersistentDataType.INTEGER);
+                return (val1 == null && val2 == null) || (val1 != null && val1.equals(val2));
+            }
+        } catch (Exception ignored) {}
+
+        try {
+            if (pdc1.has(key, PersistentDataType.BYTE) && pdc2.has(key, PersistentDataType.BYTE)) {
+                Byte val1 = pdc1.get(key, PersistentDataType.BYTE);
+                Byte val2 = pdc2.get(key, PersistentDataType.BYTE);
+                return (val1 == null && val2 == null) || (val1 != null && val1.equals(val2));
+            }
+        } catch (Exception ignored) {}
+
+        try {
+            if (pdc1.has(key, PersistentDataType.LONG) && pdc2.has(key, PersistentDataType.LONG)) {
+                Long val1 = pdc1.get(key, PersistentDataType.LONG);
+                Long val2 = pdc2.get(key, PersistentDataType.LONG);
+                return (val1 == null && val2 == null) || (val1 != null && val1.equals(val2));
+            }
+        } catch (Exception ignored) {}
+
+        try {
+            if (pdc1.has(key, PersistentDataType.DOUBLE) && pdc2.has(key, PersistentDataType.DOUBLE)) {
+                Double val1 = pdc1.get(key, PersistentDataType.DOUBLE);
+                Double val2 = pdc2.get(key, PersistentDataType.DOUBLE);
+                return (val1 == null && val2 == null) || (val1 != null && val1.equals(val2));
+            }
+        } catch (Exception ignored) {}
+
+        // If no type matched, assume different
+        return false;
     }
 
     /**
@@ -861,26 +901,80 @@ public class Barrel extends NonHopperableBlock implements DoubleHologramOwner {
     }
 
     public void insertAll(Player p, BlockMenu menu, Block b) {
-        ItemStack keyedStoredItem = menu.getItemInSlot(DISPLAY_SLOT);
+        ItemStack displayItem = menu.getItemInSlot(DISPLAY_SLOT);
+
+        // Barrel must have a display item (not empty)
+        if (displayItem == null || displayItem.getType() == Material.BARRIER) {
+            Utils.send(p, "&cBarrel is empty! Insert at least one item first.");
+            return;
+        }
+
         PlayerInventory inv = p.getInventory();
         int capacity = getCapacity(b);
-
         int stored = getStored(b);
 
-        for (int i = 0; i < inv.getContents().length; i++) {
+        if (stored >= capacity) {
+            Utils.send(p, "&cBarrel is full!");
+            return;
+        }
+
+        int itemsInserted = 0;
+
+        for (int i = 0; i < inv.getSize(); i++) {
             ItemStack item = inv.getItem(i);
-            if (item == null) {
+
+            if (item == null || item.getType() == Material.AIR) {
                 continue;
             }
+
+            // Validate item matches barrel type
+            if (!matchMeta(item, displayItem)) {
+                continue; // Skip incompatible items
+            }
+
+            // Additional SF check
+            SlimefunItem sfDisplay = SlimefunItem.getByItem(displayItem);
+            SlimefunItem sfItem = SlimefunItem.getByItem(item);
+
+            if ((sfDisplay != null) != (sfItem != null)) {
+                continue; // One is SF, other isn't - skip
+            }
+
+            if (sfDisplay != null && sfItem != null) {
+                if (!sfDisplay.getId().equals(sfItem.getId())) {
+                    continue; // Different SF items - skip
+                }
+            }
+
             int amount = item.getAmount();
-            if (matchMeta(item, keyedStoredItem) && stored + amount <= capacity) {
+
+            // Check if we can fit this stack
+            if (stored + amount <= capacity) {
                 inv.setItem(i, null);
                 stored += amount;
+                itemsInserted += amount;
+            } else {
+                // Partial insert (fill remaining space)
+                int spaceLeft = capacity - stored;
+                if (spaceLeft > 0) {
+                    item.setAmount(amount - spaceLeft);
+                    stored += spaceLeft;
+                    itemsInserted += spaceLeft;
+                    break; // Barrel is full
+                } else {
+                    break; // No space left
+                }
             }
         }
 
-        BlockStorage.addBlockInfo(b.getLocation(), "stored", String.valueOf(stored));
+        setStored(b, stored);
         updateMenu(b, menu, false, capacity);
+
+        if (itemsInserted > 0) {
+            Utils.send(p, "&aInserted &e" + itemsInserted + "&a items into barrel!");
+        } else {
+            Utils.send(p, "&cNo compatible items found in inventory!");
+        }
     }
 
     public void extract(Player p, BlockMenu menu, Block b, ClickAction action) {

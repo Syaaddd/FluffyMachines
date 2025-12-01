@@ -131,14 +131,29 @@ public class SmartFactory extends SlimefunItem implements EnergyNetComponent, Re
 
             @Override
             public void newInstance(@Nonnull BlockMenu menu, @Nonnull Block b) {
-                SlimefunItem recipe = SlimefunItem.getByItem(menu.getItemInSlot(RECIPE_SLOT));
+                String recipeId = BlockStorage.getLocationInfo(b.getLocation(), "recipe");
+                SlimefunItem recipe = null;
+
+                if (recipeId != null) {
+                    recipe = SlimefunItem.getById(recipeId);
+                }
 
                 if (recipe == null) {
                     menu.replaceExistingItem(RECIPE_SLOT, CustomItemStack.create(Material.BARRIER, "&bRecipe",
                             "&cSneak and Right Click the", "&cfactory with a supported resource", "&cto set the recipe"
                     ));
                 } else {
-                    menu.replaceExistingItem(RECIPE_SLOT, getDisplayItem(recipe, getDisplayRecipes()));
+                    // Check if the recipe is in the accepted items list
+                    if (ACCEPTED_ITEMS.contains(recipe.getItem())) {
+                        menu.replaceExistingItem(RECIPE_SLOT, getDisplayItem(recipe, getDisplayRecipes()));
+                    } else {
+                        // If not accepted, reset the recipe slot
+                        menu.replaceExistingItem(RECIPE_SLOT, CustomItemStack.create(Material.BARRIER, "&bRecipe",
+                                "&cSneak and Right Click the", "&cfactory with a supported resource", "&cto set the recipe"
+                        ));
+                        // Clear any invalid recipe info from the block
+                        BlockStorage.addBlockInfo(b, "recipe", null);
+                    }
                 }
             }
 
@@ -257,6 +272,11 @@ public class SmartFactory extends SlimefunItem implements EnergyNetComponent, Re
             return null;
         }
 
+        // Check if the recipe is in the accepted items list
+        if (!ACCEPTED_ITEMS.contains(key.getItem())) {
+            return null;
+        }
+
         if (!inv.fits(key.getItem(), getOutputSlots())) {
             return null;
         }
@@ -302,7 +322,11 @@ public class SmartFactory extends SlimefunItem implements EnergyNetComponent, Re
 
     private void craft(Block b) {
         SlimefunItem key = SlimefunItem.getByItem(BlockStorage.getInventory(b).getItemInSlot(RECIPE_SLOT));
-        BlockStorage.getInventory(b).pushItem(key.getItem().clone(), getOutputSlots());
+
+        // Check if the recipe is in the accepted items list
+        if (key != null && ACCEPTED_ITEMS.contains(key.getItem())) {
+            BlockStorage.getInventory(b).pushItem(key.getItem().clone(), getOutputSlots());
+        }
     }
 
     private void resetProgress(BlockPosition pos, BlockMenu inv) {
@@ -344,20 +368,32 @@ public class SmartFactory extends SlimefunItem implements EnergyNetComponent, Re
             recipe = new ItemStack[] {SlimefunItems.COPPER_DUST.item()};
         }
 
+        if (recipe == null) {
+            // If the item has no recipe, return empty maps
+            return new Pair<>(rawVanilla, rawSlimefun);
+        }
+
         for (ItemStack item : recipe) {
             if (item == null) {
                 continue;
             }
             if (!isReduced(item)) {
                 // Recursively add reduced recipe until all vanilla
-                Pair<HashMap<Material, Integer>, HashMap<SlimefunItem, Integer>> reduced = reduceRecipe(SlimefunItem.getByItem(item));
-                reduced.getFirstValue().forEach((recipeItem, amt) -> {
-                    rawVanilla.put(recipeItem, rawVanilla.getOrDefault(recipeItem, 0) + amt * item.getAmount());
-                });
+                SlimefunItem itemAsSlimefunItem = SlimefunItem.getByItem(item);
+                if (itemAsSlimefunItem != null) {
+                    Pair<HashMap<Material, Integer>, HashMap<SlimefunItem, Integer>> reduced = reduceRecipe(itemAsSlimefunItem);
+                    reduced.getFirstValue().forEach((recipeItem, amt) -> {
+                        rawVanilla.put(recipeItem, rawVanilla.getOrDefault(recipeItem, 0) + amt * item.getAmount());
+                    });
 
-                reduced.getSecondValue().forEach((recipeItem, amt) -> {
-                    rawSlimefun.put(recipeItem, rawSlimefun.getOrDefault(recipeItem, 0) + amt * item.getAmount());
-                });
+                    reduced.getSecondValue().forEach((recipeItem, amt) -> {
+                        rawSlimefun.put(recipeItem, rawSlimefun.getOrDefault(recipeItem, 0) + amt * item.getAmount());
+                    });
+                } else {
+                    // If it's not a Slimefun item but isReduced returned false (shouldn't happen normally),
+                    // add it as a vanilla material
+                    rawVanilla.put(item.getType(), rawVanilla.getOrDefault(item.getType(), 0) + item.getAmount());
+                }
             } else {
                 SlimefunItem sfItem = SlimefunItem.getByItem(item);
                 if (sfItem != null) {
@@ -397,10 +433,19 @@ public class SmartFactory extends SlimefunItem implements EnergyNetComponent, Re
      * Adds the selection instructions onto display recipe
      */
     public static ItemStack getDisplayItem(SlimefunItem key, List<ItemStack> displayRecipes) {
-        ItemStack item = displayRecipes.get(ACCEPTED_ITEMS.indexOf(key.getItem())).clone(); // Get item with ingredients
+        int index = ACCEPTED_ITEMS.indexOf(key.getItem());
+        ItemStack item;
+
+        if (index != -1 && index < displayRecipes.size()) {
+            item = displayRecipes.get(index).clone(); // Get item with ingredients
+        } else {
+            // If the item is not in the accepted list or index is out of bounds, return the original item
+            item = key.getItem().clone();
+        }
+
         ItemMeta displayMeta = item.getItemMeta();
 
-        List<String> lore = displayMeta.getLore();
+        List<String> lore = displayMeta.getLore() != null ? displayMeta.getLore() : new ArrayList<>();
         lore.add("");
         lore.add(Utils.color("&eSneak and Right Click the factory with a"));
         lore.add(Utils.color("&ecompatible resource to change the recipe"));

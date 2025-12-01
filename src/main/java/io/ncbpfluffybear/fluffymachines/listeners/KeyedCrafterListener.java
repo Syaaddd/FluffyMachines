@@ -5,6 +5,7 @@ import io.github.thebusybiscuit.slimefun4.api.items.SlimefunItem;
 import io.github.thebusybiscuit.slimefun4.api.items.SlimefunItemStack;
 import io.github.thebusybiscuit.slimefun4.core.attributes.RecipeDisplayItem;
 import io.github.thebusybiscuit.slimefun4.implementation.SlimefunItems;
+import io.github.thebusybiscuit.slimefun4.libraries.dough.items.CustomItemStack;
 import io.ncbpfluffybear.fluffymachines.machines.AutoCraftingTable;
 import io.ncbpfluffybear.fluffymachines.machines.SmartFactory;
 import io.ncbpfluffybear.fluffymachines.utils.Utils;
@@ -56,14 +57,23 @@ public class KeyedCrafterListener implements Listener {
                     return;
                 }
 
-                // PERBAIKAN: Bandingkan berdasarkan ID atau gunakan method yang lebih aman
-                // Opsi 1: Bandingkan berdasarkan ID (Rekomendasi)
                 if (isItemAccepted(key, SmartFactory.getAcceptedItems())) {
                     BlockStorage.addBlockInfo(b, "recipe", key.getId());
-                    BlockStorage.getInventory(b).replaceExistingItem(SmartFactory.RECIPE_SLOT,
-                            SmartFactory.getDisplayItem(key, ((RecipeDisplayItem) sfBlock).getDisplayRecipes())
-                    );
-                    Utils.send(p, "&aTarget recipe set to " + key.getItemName());
+                    try {
+                        BlockStorage.getInventory(b).replaceExistingItem(SmartFactory.RECIPE_SLOT,
+                                SmartFactory.getDisplayItem(key, ((RecipeDisplayItem) sfBlock).getDisplayRecipes())
+                        );
+                        Utils.send(p, "&aTarget recipe set to " + key.getItemName());
+                    } catch (Exception ex) {
+                        // If there's an error displaying the recipe, reset the slot
+                        BlockStorage.getInventory(b).replaceExistingItem(SmartFactory.RECIPE_SLOT,
+                                CustomItemStack.create(Material.BARRIER, "&bRecipe",
+                                        "&cSneak and Right Click the", "&cfactory with a supported resource", "&cto set the recipe"
+                                )
+                        );
+                        Utils.send(p, "&cError setting recipe - please try again!");
+                        ex.printStackTrace();
+                    }
                 } else {
                     Utils.send(p, "&cThis item is not supported!");
                 }
@@ -106,7 +116,7 @@ public class KeyedCrafterListener implements Listener {
         String itemId = item.getId();
 
         for (SlimefunItemStack acceptedItem : acceptedItems) {
-            if (acceptedItem.getItemId().equals(itemId)) {
+            if (acceptedItem != null && acceptedItem.getItemId().equals(itemId)) {
                 return true;
             }
         }
