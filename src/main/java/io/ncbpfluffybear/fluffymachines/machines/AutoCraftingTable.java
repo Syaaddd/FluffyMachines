@@ -389,7 +389,7 @@ public class AutoCraftingTable extends SlimefunItem implements EnergyNetComponen
 
                 // We found the entire recipe! No need to pass on.
                 if (!passOn) {
-                    craft(menu, recipe.getFirstValue().clone());
+                    craft(menu, recipe.getFirstValue().clone(), block);
                     return;
                 }
             }
@@ -426,7 +426,7 @@ public class AutoCraftingTable extends SlimefunItem implements EnergyNetComponen
                                 CustomItemStack.create(new ItemStack(Material.GREEN_STAINED_GLASS_PANE),
                                         "&a&lCrafting"));
                     }
-                    craft(menu, recipe.getFirstValue().clone());
+                    craft(menu, recipe.getFirstValue().clone(), block);
                     return;
 
                 } else {
@@ -445,11 +445,20 @@ public class AutoCraftingTable extends SlimefunItem implements EnergyNetComponen
         }
     }
 
-    private void craft(BlockMenu menu, ItemStack item) {
+    private void craft(BlockMenu menu, ItemStack item, Block block) {
         if (!menu.fits(item, getOutputSlots())) {
             if (menu.hasViewer()) {
                 menu.replaceExistingItem(statusSlot, CustomItemStack.create(new ItemStack(Material.RED_STAINED_GLASS_PANE),
                         "&c&lOutput slots full"));
+            }
+            return;
+        }
+
+        // Re-check if the machine is still enabled before consuming items
+        if (BlockStorage.getLocationInfo(block.getLocation(), "enabled").equals("false")) {
+            if (menu.hasViewer()) {
+                menu.replaceExistingItem(statusSlot, CustomItemStack.create(new ItemStack(Material.RED_STAINED_GLASS_PANE),
+                        "&c&lMachine disabled"));
             }
             return;
         }
@@ -464,6 +473,15 @@ public class AutoCraftingTable extends SlimefunItem implements EnergyNetComponen
             if (menu.getItemInSlot(slot) != null) {
                 menu.consumeItem(slot, 1);
             }
+        }
+
+        // Re-check if the machine is still enabled before pushing output
+        if (BlockStorage.getLocationInfo(block.getLocation(), "enabled").equals("false")) {
+            if (menu.hasViewer()) {
+                menu.replaceExistingItem(statusSlot, CustomItemStack.create(new ItemStack(Material.RED_STAINED_GLASS_PANE),
+                        "&c&lMachine disabled"));
+            }
+            return;
         }
 
         menu.pushItem(item, getOutputSlots());

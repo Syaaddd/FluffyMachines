@@ -7,3 +7,11 @@
 .classpath
 dependency-reduced-pom.xml
 .DS_Store
+Thumbs.db
+*.log
+.env
+*.bak-pretranslation
+/build/
+/.gradle/
+/.vscode/
+*.class

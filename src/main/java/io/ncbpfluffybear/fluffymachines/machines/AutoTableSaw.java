@@ -211,12 +211,17 @@ public class AutoTableSaw extends SlimefunItem implements EnergyNetComponent {
 
         BlockMenu menu = BlockStorage.getInventory(block);
         tableSawRecipes.forEach((input, output) -> {
-            if (menu.getItemInSlot(inputSlots[0]) != null
+            // Re-check if the machine is still enabled before processing each recipe
+            if (!BlockStorage.getLocationInfo(block.getLocation(), "enabled").equals(String.valueOf(false))
+                && menu.getItemInSlot(inputSlots[0]) != null
                 && SlimefunUtils.isItemSimilar(menu.getItemInSlot(inputSlots[0]), input, true, false)
                 && menu.fits(output, outputSlots)) {
 
                 menu.consumeItem(inputSlots[0]);
-                menu.pushItem(output.clone(), outputSlots);
+                // Re-check if the machine is still enabled before pushing output
+                if (!BlockStorage.getLocationInfo(block.getLocation(), "enabled").equals(String.valueOf(false))) {
+                    menu.pushItem(output.clone(), outputSlots);
+                }
             }
         });
     }

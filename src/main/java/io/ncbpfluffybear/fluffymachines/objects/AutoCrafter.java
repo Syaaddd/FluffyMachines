@@ -270,7 +270,7 @@ public class AutoCrafter extends SlimefunItem implements EnergyNetComponent {
             if (input != null && isCraftable(menu, input)) {
                 ItemStack output = RecipeType.getRecipeOutputList(mblock, input).clone();
                 if (output != null && menu.fits(output, getOutputSlots())) {
-                    craft(output, menu);
+                    craft(output, menu, block);
                     removeCharge(block.getLocation(), getEnergyConsumption());
                     return;
                 }
@@ -310,13 +310,23 @@ public class AutoCrafter extends SlimefunItem implements EnergyNetComponent {
         return true;
     }
 
-    private void craft(ItemStack output, BlockMenu inv) {
+    private void craft(ItemStack output, BlockMenu inv, Block block) {
+        // Re-check if the machine is still enabled before consuming items
+        if (BlockStorage.getLocationInfo(block.getLocation(), "enabled").equals(String.valueOf(false))) {
+            return;
+        }
+
         for (int j = 0; j < 9; j++) {
             ItemStack item = inv.getItemInSlot(getInputSlots()[j]);
 
             if (item != null && item.getType() != Material.AIR) {
                 inv.consumeItem(getInputSlots()[j], 1); // Consume 1 of each ingredient for the recipe
             }
+        }
+
+        // Re-check if the machine is still enabled before pushing output
+        if (BlockStorage.getLocationInfo(block.getLocation(), "enabled").equals(String.valueOf(false))) {
+            return;
         }
 
         inv.pushItem(output, outputSlots);

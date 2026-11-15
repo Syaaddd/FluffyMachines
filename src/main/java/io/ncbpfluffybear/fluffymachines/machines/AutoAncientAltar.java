@@ -384,10 +384,22 @@ public class AutoAncientAltar extends SlimefunItem implements EnergyNetComponent
         if (!menu.fits(result, getOutputSlots())) {
             return;
         }
+
+        // Re-check if the machine is still enabled before consuming items
+        if (BlockStorage.getLocationInfo(b.getLocation(), "enabled").equals(String.valueOf(false))) {
+            return;
+        }
+
         removeCharge(b.getLocation(), ENERGY_CONSUMPTION);
         for (int slot : getInputSlots()) {
             menu.consumeItem(slot);
         }
+
+        // Re-check if the machine is still enabled before pushing output
+        if (BlockStorage.getLocationInfo(b.getLocation(), "enabled").equals(String.valueOf(false))) {
+            return;
+        }
+
         menu.pushItem(result, getOutputSlots());
     }
 
